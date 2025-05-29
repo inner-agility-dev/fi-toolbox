@@ -1,0 +1,19 @@
+@startuml
+!theme plain
+title PlantUML Test Diagram
+
+actor User
+participant "VS Code" as vscode
+participant "PlantUML" as plantuml
+
+User -> vscode: Open .puml file
+vscode -> plantuml: Render diagram
+plantuml --> vscode: Generated image
+vscode --> User: Display preview
+
+note right of plantuml
+  If you see this diagram,
+  PlantUML is working correctly!
+end note
+
+@enduml 

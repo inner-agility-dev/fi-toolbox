@@ -1,0 +1,123 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: #3883fa;
+}
+h1 {
+  margin-bottom: 0px;
+}
+h6 {
+  margin-bottom: 10px;
+}
+label {
+  font-size: 12px;
+}
+.logo {
+  height: 100px;
+  display: flex;
+  align-items: center;
+}
+.logo img{
+  height: 100%;
+  margin-left: -12px;
+}
+.controls {
+  position: absolute;
+  top: 100px;
+  left: 0;
+  width: 380px;
+  height: 100%;
+}
+.controls-shift {
+  left: -368px;
+}
+.config {
+  display: flex;
+  justify-content: space-between;
+}
+.header {
+  margin-left: 15px;
+  margin-right: 15px;
+  margin-bottom: 15px;
+}
+#links {
+  position: absolute;
+  top: 25px;
+  right: 25px;
+  font-size: 24px;
+}
+#links a {
+  color: #3883fa;
+}
+.iframe-wrapper-border {
+  position: absolute;
+  top: 100px;
+  left: 380px;
+  right: 0;
+  height: 100%;
+  background-color: #eeeeee;
+}
+.iframe-wrapper-border-shift {
+  left: 12px;
+}
+#iframe-wrapper {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
+  border: 1px solid #9e9e9e;
+  background-color: #fff;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23);
+}
+#iframe-wrapper.mobile {
+  position: absolute;
+  top: 20px;
+  width: 360px;
+  bottom: 20px;
+  margin: 0 auto;
+}
+#collapse {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 12px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #c8c8c8;
+  color: #888;
+  text-decoration: none;
+  cursor: pointer;
+}
+#jsoneditor {
+  position: absolute;
+  top: 280px;
+  left: 0;
+  right: 12px;
+  bottom: 0;
+}
+#jwt {
+  width: 95%;
+  resize: none;
+  box-shadow: none;
+}
+div.jsoneditor-field,
+div.jsoneditor-value,
+div.jsoneditor td,
+div.jsoneditor th,
+div.jsoneditor textarea,
+div.jsoneditor-schema-error {
+  font-size: 8pt;
+}
+.popup.popup_top {
+  margin-bottom: 20px;
+  left: -10px;
+}
+#tiles {
+  font-size: 11px;
+}

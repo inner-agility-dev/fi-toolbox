@@ -1,0 +1,21 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+class TestClass {
+    -privateField: String
+    +publicMethod(): void
+}
+
+interface TestInterface {
+    +doSomething(): void
+}
+
+TestClass ..|> TestInterface : implements
+
+note right of TestClass
+  This is a test PlantUML diagram
+  to verify the setup is working
+end note
+
+@enduml 

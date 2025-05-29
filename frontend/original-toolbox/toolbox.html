@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no, width=device-width">
+  <!-- disable shortcut icon dowloading -->
+  <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
+  <title>Responsive Tiles Toolbox</title>
+</head>
+<body style="display: none;">
+  <div class="logo">
+    <img src="<%= htmlWebpackPlugin.options.publicPath %>/images/Jack-Henry-Wordmark-CMYK.png" alt="jha logo"   />
+  </div>
+  <div id="controls" class="controls">
+    <div class="header">
+      <h1>Tiles Toolbox</h1>
+      <div id="links">
+        <a id="download-html" onclick="onDownloadClick(event)" title="Download HTML"><i class="fas fa-code"></i></a>
+        <a id="share-link" href="" title="Share Link"><i class="fas fa-share-alt"></i></a>
+      </div>
+      <div class="config">
+        <div>
+          <h6>Select Mode</h6>
+          <input
+            id="mode-app"
+            type="radio"
+            name="mode"
+            value="app"
+            onChange="onModeChange(this)"
+            checked />
+          <label for="mode-app">App</label><br/>
+          <input
+            id="mode-tile"
+            type="radio"
+            name="mode"
+            value="tile"
+            onChange="onModeChange(this)" />
+          <label for="mode-tile">Tile</label><br/>
+        </div>
+        <div>
+          <h6>Select View</h6>
+          <input
+            id="view-desktop"
+            type="radio"
+            name="view"
+            value="desktop"
+            onChange="onViewChange(this)"
+            checked />
+          <label for="view-desktop">Desktop</label><br/>
+          <input
+            id="view-mobile"
+            type="radio"
+            name="view"
+            value="mobile"
+            onChange="onViewChange(this)" />
+          <label for="view-mobile">Mobile</label><br/>
+        </div>
+        <div style="width: 150px;">
+          <div id="tile-config" style="display: none;">
+            <h6>Select Tile</h6>
+            <select id="tiles" onChange="onTileChange(this)">
+              <option value="createAccounts">Accounts</option>
+              <option value="createAccountsCard">Accounts Card</option>
+              <option value="createCashReservesCard">Cash Reserves Card</option>
+              <option value="createCashSummaryCard">Cash Summary Card</option>
+              <option value="createAd">Ad</option>
+              <option value="createAggregation">Aggregation</option>
+              <option value="createAlerts">Alerts</option>
+              <option value="createBudgets">Budgets</option>
+              <option value="createBudgetsCard">Budgets Card</option>
+              <option value="createCarousel">Carousel</option>
+              <option value="createCashflow">Cashflow</option>
+              <option value="createCashflowCard">Cashflow Card</option>
+              <option value="createCashOverviewCard">Cash Overview Card</option>
+              <option value="createCashReportCard">Cash Report Card</option>
+              <option value="createFinancialHealth">Financial Health</option>
+              <option value="createGoals">Goals</option>
+              <option value="createGoalsCard">Goals Card</option>
+              <option value="createHelp">Help</option>
+              <option value="createNetWorth">Net Worth</option>
+              <option value="createNetWorthCard">Net Worth Card</option>
+              <option value="createOverview">Overview</option>
+              <option value="createSpending">Spending</option>
+              <option value="createSpendingWheel" selected>Spending Wheel</option>
+              <option value="createSpendingWheelCard">Spending Wheel Card</option>
+              <option value="createCostOfEatingCard">Cost of Eating Card</option>
+              <option value="createTransactions">Transactions</option>
+              <option value="createTransactionSearch">Transaction Search</option>
+              <option value="createTransactionsCard">Transactions Card</option>
+            </select>
+          </div>
+          <div id="app-config">
+            <h6>Select Audience</h6>
+            <input
+              id="audience-consumer"
+              type="radio"
+              name="audience"
+              value="consumer"
+              onChange="onAudienceChange(this)"
+              checked />
+            <label for="audience-consumer">Consumer</label><br />
+            <input
+              id="audience-business"
+              type="radio"
+              name="audience"
+              value="business"
+              onChange="onAudienceChange(this)" />
+            <label for="audience-business">Business</label><br />
+          </div>
+        </div>
+      </div>
+      <h6>Enter JWT (optional)</h6>
+      <textarea
+        id="jwt"
+        rows="4"
+        placeholder="Paste JWT to load with specific user data"
+        onKeyUp="onJWTChange(this)"></textarea>
+    </div>
+    <div id="jsoneditor"></div>
+    <a id="collapse" onClick="onCollapseClick(event)">
+      <i id="collapse-icon" class="fas fa-caret-left"></i>
+    </a>
+  </div>
+  <div id="iframe-wrapper-border" class="iframe-wrapper-border">
+    <div id="iframe-wrapper">
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/iframe-resizer@4.2.10/js/iframeResizer.min.js" integrity="sha256-0FsDr6k3iiIaao/F1olkJHUfEU/eGSYClQ7ZhVc2md8=" crossorigin="anonymous"></script>
+  <script type="text/javascript" src="toolbox.js"></script>
+</body>
+</html>

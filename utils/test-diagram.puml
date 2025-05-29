@@ -1,0 +1,25 @@
+@startuml
+!theme plain
+
+title Test PlantUML Diagram
+
+actor User
+participant "VS Code" as vscode
+participant "PlantUML Extension" as ext
+participant "PlantUML JAR" as jar
+
+User -> vscode : Open .puml file
+vscode -> ext : Trigger preview
+ext -> jar : Process diagram
+jar --> ext : Return image
+ext --> vscode : Display preview
+vscode --> User : Show diagram
+
+note over jar
+  PlantUML requires:
+  1. Java installed
+  2. Graphviz installed
+  3. Correct path configuration
+end note
+
+@enduml 
