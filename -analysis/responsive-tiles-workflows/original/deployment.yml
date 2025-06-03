@@ -1,0 +1,79 @@
+name: Deployment workflow
+
+on:
+  push:
+    branches: ["master"] # main
+  workflow_dispatch:
+
+# If a new push or pull requests occurs before this workflow completes, cancel
+# any existing running workflow. This prevents a previous deployment pattern
+# from progressing when a new build appears.
+concurrency:
+  group: ${{ github.repository }}-${{ github.event.push.number || github.ref }}
+  cancel-in-progress: true
+
+# Downstream, there are actions that will add "checks" jobs/pages to the summary
+# and auto tagging requires write permissions for contents.
+permissions:
+  actions: read
+  checks: write
+  contents: write
+  id-token: write
+
+jobs:
+  tiles-ci-test:
+    uses: Banno/responsive-tiles/.github/workflows/workflow-tiles-ci-test.yml@master
+    with:
+      node_base_version: 14
+      project_name: tiles
+
+  dev-build-deploy:
+    needs:
+      - tiles-ci-test
+    uses: Banno/responsive-tiles/.github/workflows/workflow-tiles-build-deploy.yml@master
+    with:
+      gcp_environment_name: dev
+      environment: dev
+      node_base_version: 14
+      content_paths: dist/qa/v2
+      project_name: tiles
+      #slack_channel: ${{ inputs.slack_channel }}
+      service_account_name: geezeo-tiles
+      env_vars: DEPLOY_FOLDER:'qa',ENV:'development',BUCKET_SUFFIX:'zwwst63n',DEPLOY_BUCKET_SUFFIX:'zwwst63n',NODE_ENV:'production'
+      gcp_bucket_project_id: dev-digital-banno
+      gcp_hosting_bucket: dev-digital-gzo-geezeo-tiles-zwwst63n
+      gcp_project_id: dev-digital-banno
+
+  stage-build-deploy:
+    needs:
+      - dev-build-deploy
+    uses: Banno/responsive-tiles/.github/workflows/workflow-tiles-build-deploy.yml@master
+    with:
+      gcp_environment_name: stage
+      environment: staging
+      node_base_version: 14
+      content_paths: dist/staging/v2
+      project_name: tiles
+      #slack_channel: ${{ inputs.slack_channel }}
+      service_account_name: geezeo-tiles
+      env_vars: DEPLOY_FOLDER:'staging',ENV:'staging',BUCKET_SUFFIX:'nyjcof9v',DEPLOY_BUCKET_SUFFIX:'nyjcof9v',NODE_ENV:'production'
+      gcp_bucket_project_id: stage-digital-banno
+      gcp_hosting_bucket: stage-digital-gzo-geezeo-tiles-nyjcof9v
+      gcp_project_id: stage-digital-banno
+
+  prod-build-deploy:
+    needs:
+      - stage-build-deploy
+    uses: Banno/responsive-tiles/.github/workflows/workflow-tiles-build-deploy.yml@master
+    with:
+      gcp_environment_name: prod
+      environment: production
+      node_base_version: 14
+      content_paths: dist/production/v2
+      project_name: tiles
+      #slack_channel: ${{ inputs.slack_channel }}
+      service_account_name: geezeo-tiles
+      env_vars: DEPLOY_FOLDER:'production',ENV:'production',BUCKET_SUFFIX:'gvf7byup',DEPLOY_BUCKET_SUFFIX:'gvf7byup',NODE_ENV:'production'
+      gcp_bucket_project_id: prod-digital-banno
+      gcp_hosting_bucket: prod-digital-gzo-geezeo-tiles-gvf7byup
+      gcp_project_id: prod-digital-banno

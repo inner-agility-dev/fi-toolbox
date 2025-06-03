@@ -1,0 +1,233 @@
+name: Progressive Deployment Pipeline
+
+on:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-once:
+    name: Build Application Once
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      artifact: ${{ steps.version.outputs.artifact }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          
+      - run: npm ci
+      
+      - name: Get version and validate
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "artifact=tiles-$VERSION-${{ github.sha }}" >> $GITHUB_OUTPUT
+          
+          # Verify git tag exists
+          if ! git tag -l "v$VERSION" | grep -q "v$VERSION"; then
+            echo "::error::Git tag v$VERSION not found. Run 'npm run prepare-release' before merging."
+            exit 1
+          fi
+          
+          # Verify version.js matches
+          if [ -f "src/version.js" ]; then
+            VERSION_JS=$(grep -o "'[0-9]\+\.[0-9]\+\.[0-9]\+'" src/version.js | tr -d "'")
+            if [ "$VERSION_JS" != "$VERSION" ]; then
+              echo "::error::Version mismatch in version.js"
+              exit 1
+            fi
+          fi
+          
+          echo "Building version $VERSION"
+          
+      - name: Lint
+        run: npm run lint
+          
+      - name: Build
+        run: npm run build
+        
+      - name: Cache build output
+        uses: actions/cache@v4
+        with:
+          path: dist/
+          key: build-${{ steps.version.outputs.version }}-${{ github.sha }}
+          
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.artifact }}
+          path: dist/
+          retention-days: 30
+
+  deploy-development:
+    name: Deploy to Development
+    needs: build-once
+    runs-on: ubuntu-latest
+    environment: development
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-once.outputs.artifact }}
+          path: ./dist
+          
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/423509969265/locations/global/workloadIdentityPools/gha-cldteam-pool-58a241b9/providers/gha-cldteam-provid-58a241b9"
+          service_account: "geezeo-tiles@dev-digital-banno.iam.gserviceaccount.com"
+          
+      - uses: google-github-actions/setup-gcloud@v2
+      
+      - uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: ./dist
+          destination: "dev-digital-gzo-geezeo-tiles-zwwst63n/qa/v2"
+          parent: false
+          process_gcloudignore: false
+          
+      - name: Verify deployment
+        run: |
+          if gsutil ls "gs://dev-digital-gzo-geezeo-tiles-zwwst63n/qa/v2/index.html" > /dev/null 2>&1; then
+            echo "✅ Development deployment verified"
+            echo "URL: https://dev-digital-gzo-geezeo-tiles-zwwst63n.storage.googleapis.com/qa/v2/index.html"
+          else
+            echo "❌ Development deployment failed"
+            exit 1
+          fi
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [build-once, deploy-development]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-once.outputs.artifact }}
+          path: ./dist
+          
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/423509969265/locations/global/workloadIdentityPools/gha-cldteam-pool-58a241b9/providers/gha-cldteam-provid-58a241b9"
+          service_account: "geezeo-tiles@stage-digital-banno.iam.gserviceaccount.com"
+          
+      - uses: google-github-actions/setup-gcloud@v2
+      
+      - uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: ./dist
+          destination: "stage-digital-gzo-geezeo-tiles-nyjcof9v/staging/v2"
+          parent: false
+          process_gcloudignore: false
+          
+      - name: Verify deployment
+        run: |
+          if gsutil ls "gs://stage-digital-gzo-geezeo-tiles-nyjcof9v/staging/v2/index.html" > /dev/null 2>&1; then
+            echo "✅ Staging deployment verified"
+            echo "URL: https://stage-digital-gzo-geezeo-tiles-nyjcof9v.storage.googleapis.com/staging/v2/index.html"
+          else
+            echo "❌ Staging deployment failed"
+            exit 1
+          fi
+
+  deploy-production:
+    name: Deploy to Production
+    needs: [build-once, deploy-staging]
+    runs-on: ubuntu-latest
+    environment: production  # This will require manager approval
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-once.outputs.artifact }}
+          path: ./dist
+          
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/423509969265/locations/global/workloadIdentityPools/gha-cldteam-pool-58a241b9/providers/gha-cldteam-provid-58a241b9"
+          service_account: "geezeo-tiles@prod-digital-banno.iam.gserviceaccount.com"
+          
+      - uses: google-github-actions/setup-gcloud@v2
+      
+      - uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: ./dist
+          destination: "prod-digital-gzo-geezeo-tiles-gvf7byup/production/v2"
+          parent: false
+          process_gcloudignore: false
+          
+      - name: Verify deployment
+        run: |
+          if gsutil ls "gs://prod-digital-gzo-geezeo-tiles-gvf7byup/production/v2/index.html" > /dev/null 2>&1; then
+            echo "✅ Production deployment verified"
+            echo "URL: https://prod-digital-gzo-geezeo-tiles-gvf7byup.storage.googleapis.com/production/v2/index.html"
+          else
+            echo "❌ Production deployment failed"
+            exit 1
+          fi
+
+  deployment-summary:
+    name: Deployment Summary
+    needs: [build-once, deploy-development, deploy-staging, deploy-production]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create deployment summary
+        run: |
+          echo "# Deployment Summary" > $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.build-once.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | Status | URL |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------------|--------|-----|" >> $GITHUB_STEP_SUMMARY
+          
+          # Development
+          if [ "${{ needs.deploy-development.result }}" == "success" ]; then
+            echo "| Development | ✅ Success | [View](https://dev-digital-gzo-geezeo-tiles-zwwst63n.storage.googleapis.com/qa/v2/index.html) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Development | ❌ Failed | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Staging
+          if [ "${{ needs.deploy-staging.result }}" == "success" ]; then
+            echo "| Staging | ✅ Success | [View](https://stage-digital-gzo-geezeo-tiles-nyjcof9v.storage.googleapis.com/staging/v2/index.html) |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.deploy-staging.result }}" == "skipped" ]; then
+            echo "| Staging | ⏭️ Skipped | - |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Staging | ❌ Failed | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Production
+          if [ "${{ needs.deploy-production.result }}" == "success" ]; then
+            echo "| Production | ✅ Success | [View](https://prod-digital-gzo-geezeo-tiles-gvf7byup.storage.googleapis.com/production/v2/index.html) |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.deploy-production.result }}" == "skipped" ]; then
+            echo "| Production | ⏭️ Skipped | - |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Production | ❌ Failed | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+      - name: Upload summary as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-summary-${{ needs.build-once.outputs.version }}
+          path: ${{ github.step_summary }}
+          retention-days: 30 

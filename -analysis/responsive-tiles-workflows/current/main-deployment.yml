@@ -1,0 +1,265 @@
+name: Main Deployment Workflow
+
+on:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.event.push.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.1
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+          
+      - name: Get version
+        id: get-version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Package version: $VERSION"
+          
+      - name: Verify version
+        run: |
+          # Version is now managed via webpack from package.json
+          echo "✅ Version management: Single source of truth (package.json)"
+          echo "Package version: ${{ steps.get-version.outputs.version }}"
+      
+      - name: Lint
+        run: npm run lint
+        
+      - name: Check git tag matches package version
+        run: |
+          CURRENT_VERSION="${{ steps.get-version.outputs.version }}"
+          TAG_EXISTS=$(git tag -l "v$CURRENT_VERSION")
+          
+          if [ -z "$TAG_EXISTS" ]; then
+            echo "❌ No git tag found for version v$CURRENT_VERSION"
+            echo "Please run 'npm run prepare-release' locally to create the git tag"
+            exit 1
+          else
+            echo "✅ Git tag v$CURRENT_VERSION exists"
+          fi
+          
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ needs.validate.outputs.version }}
+      artifact_name: ${{ steps.artifact.outputs.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.1
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        
+      - name: Get version
+        id: get-version
+        run: echo "version=${{ needs.validate.outputs.version }}" >> $GITHUB_OUTPUT
+          
+      - name: Set artifact name
+        id: artifact
+        run: |
+          echo "name=tiles-production-${{ needs.validate.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "Created artifact name: tiles-production-${{ needs.validate.outputs.version }}"
+          
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: dist/
+          retention-days: 30
+  
+  deploy-staging:
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      deploy_status: ${{ steps.verify.outputs.status }}
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: ./dist
+          
+      - name: Set environment variables
+        run: |
+          echo "DEPLOY_FOLDER=staging" >> $GITHUB_ENV
+          echo "ENV=staging" >> $GITHUB_ENV
+          echo "GCP_PROJECT_ID=stage-digital-banno" >> $GITHUB_ENV
+          echo "GCP_HOSTING_BUCKET=stage-digital-gzo-geezeo-tiles-nyjcof9v" >> $GITHUB_ENV
+          echo "DEPLOY_VERSION=${{ needs.validate.outputs.version }}" >> $GITHUB_ENV
+          
+      - name: GCP Authentication
+        uses: "google-github-actions/auth@v2"
+        with:
+          workload_identity_provider: "projects/423509969265/locations/global/workloadIdentityPools/gha-cldteam-pool-58a241b9/providers/gha-cldteam-provid-58a241b9"
+          service_account: "geezeo-tiles@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
+          token_format: "access_token"
+
+      - name: Setup gcloud SDK
+        uses: "google-github-actions/setup-gcloud@v2"
+          
+      - name: Deploy to staging
+        id: deploy
+        uses: "google-github-actions/upload-cloud-storage@v2"
+        with:
+          path: ./dist
+          destination: "${{ env.GCP_HOSTING_BUCKET }}/${{ env.DEPLOY_FOLDER }}/v2"
+          parent: false
+          process_gcloudignore: false
+          
+      - name: Verify deployment
+        id: verify
+        run: |
+          echo "Verifying deployment to staging environment"
+          # Check if index.html was properly uploaded
+          if gsutil ls "gs://${{ env.GCP_HOSTING_BUCKET }}/${{ env.DEPLOY_FOLDER }}/v2/index.html"; then
+            echo "✅ index.html found in staging environment"
+            VERIFY_STATUS="success"
+          else
+            echo "⚠️ index.html not found in staging environment"
+            VERIFY_STATUS="failure"
+          fi
+          echo "status=$VERIFY_STATUS" >> $GITHUB_OUTPUT
+      
+  deploy-production:
+    needs: [validate, build, deploy-staging]
+    if: needs.deploy-staging.outputs.deploy_status == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: ./dist
+          
+      - name: Set environment variables
+        run: |
+          echo "DEPLOY_FOLDER=production" >> $GITHUB_ENV
+          echo "ENV=production" >> $GITHUB_ENV
+          echo "GCP_PROJECT_ID=prod-digital-banno" >> $GITHUB_ENV
+          echo "GCP_HOSTING_BUCKET=prod-digital-gzo-geezeo-tiles-gvf7byup" >> $GITHUB_ENV
+          echo "DEPLOY_VERSION=${{ needs.validate.outputs.version }}" >> $GITHUB_ENV
+          
+      - name: GCP Authentication
+        uses: "google-github-actions/auth@v2"
+        with:
+          workload_identity_provider: "projects/423509969265/locations/global/workloadIdentityPools/gha-cldteam-pool-58a241b9/providers/gha-cldteam-provid-58a241b9"
+          service_account: "geezeo-tiles@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
+          token_format: "access_token"
+
+      - name: Setup gcloud SDK
+        uses: "google-github-actions/setup-gcloud@v2"
+          
+      - name: Deploy to production
+        id: deploy
+        uses: "google-github-actions/upload-cloud-storage@v2"
+        with:
+          path: ./dist
+          destination: "${{ env.GCP_HOSTING_BUCKET }}/${{ env.DEPLOY_FOLDER }}/v2"
+          parent: false
+          process_gcloudignore: false
+          
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment to production environment"
+          # Simply check if index.html was properly uploaded
+          if gsutil ls "gs://${{ env.GCP_HOSTING_BUCKET }}/${{ env.DEPLOY_FOLDER }}/v2/index.html"; then
+            echo "✅ index.html found in production environment"
+          else
+            echo "⚠️ index.html not found in production environment"
+          fi
+
+  notify:
+    needs: [validate, deploy-staging, deploy-production]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout for metadata
+        uses: actions/checkout@v4
+        
+      - name: Create deployment summary
+        run: |
+          echo "## Deployment Summary" > deployment_summary.md
+          echo "" >> deployment_summary.md
+          echo "| Environment | Status |" >> deployment_summary.md
+          echo "|-------------|--------|" >> deployment_summary.md
+          
+          # Staging status
+          if [ "${{ needs.deploy-staging.result }}" == "success" ]; then
+            STAGING_STATUS="✅ Success"
+          else
+            STAGING_STATUS="❌ Failed"
+          fi
+          echo "| Staging | $STAGING_STATUS |" >> deployment_summary.md
+          
+          # Production status
+          if [ "${{ needs.deploy-production.result }}" == "success" ]; then
+            PROD_STATUS="✅ Success"
+          elif [ "${{ needs.deploy-staging.result }}" != "success" ]; then
+            PROD_STATUS="⏭️ Skipped (staging failed)"
+          else
+            PROD_STATUS="❌ Failed"
+          fi
+          echo "| Production | $PROD_STATUS |" >> deployment_summary.md
+          
+          echo "" >> deployment_summary.md
+          echo "### Deployment URLs" >> deployment_summary.md
+          echo "" >> deployment_summary.md
+          echo "- Staging: https://stage-digital-gzo-geezeo-tiles-nyjcof9v.storage.googleapis.com/staging/v2/index.html" >> deployment_summary.md
+          echo "- Production: https://prod-digital-gzo-geezeo-tiles-gvf7byup.storage.googleapis.com/production/v2/index.html" >> deployment_summary.md
+          
+          cat deployment_summary.md
+          
+      - name: Upload deployment summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-summary
+          path: deployment_summary.md
+          retention-days: 30

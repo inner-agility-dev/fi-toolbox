@@ -1,0 +1,197 @@
+name: Build and Deploy Tiles app to GCS
+
+on:
+  workflow_call:
+    inputs:
+      gcp_environment_name:
+        description: Environment to deploy the code to in GCP
+        required: true
+        type: string
+      environment:
+        description: Environment in GitHub
+        required: true
+        type: string
+      node_base_version:
+        description: The Base Node.js version to be used for the build and deploy
+        required: false
+        type: string
+        default: 14.20.1
+      content_paths:
+        description: Space separated string of file paths to consider for the artifact staging
+        required: false
+        type: string
+        default: dist/
+      project_name:
+        description: Name of the application/service
+        required: false
+        type: string
+        default: tiles
+      slack_channel:
+        description: Slack Channel ID to post to. If blank, no notices will be sent to Slack
+        required: false
+        type: string
+      service_account_name:
+        description: Name of the GCP service account associated for CICD, to be prefixed to @<projectid>.iam..iam.gserviceaccount.com
+        type: string
+        required: false
+        default: geezeo-tiles
+      env_vars:
+        description: Comma separated string key value pairs in form {var_name}:{value} to be considered as Environment Variables for NPM build
+        type: string
+        required: true
+      gcp_project_id:
+        description: The GCP Project ID , also hosting the associated service account per environment
+        type: string
+        required: true
+      gcp_hosting_bucket:
+        description: The GCP bucket name to host the tiles application
+        type: string
+        required: true
+      gcp_bucket_project_id:
+        description: The GCP Project ID , hosting the public bucket
+        type: string
+        required: true
+
+permissions:
+  actions: read
+  checks: write
+  contents: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ github.run_id }}
+      version_tag: ${{ steps.set-version.outputs.version_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_base_version }}
+
+      - name: Set ENV Vars
+        id: set-vars
+        run: |
+          branch_name=${{ github.ref_name }}
+          input_string=${{ inputs.env_vars }}
+          IFS=',' read -ra pairs <<< "$input_string"
+          for pair in "${pairs[@]}"; do
+            IFS=':' read -ra split_pair <<< "$pair"
+            echo "${split_pair[0]}=${split_pair[1]}" >> $GITHUB_ENV
+          done
+
+      - name: Install dependencies
+        run: npm install
+        env:
+          NODE_ENV: development
+
+      - name: List node_modules/.bin
+        run: ls node_modules/.bin
+
+      - name: Clean dependencies
+        run: npm run clean
+
+      - name: Lint application
+        run: npm run lint
+
+      - name: Get project version and uploaded artifact id
+        id: set-version
+        run: |
+          version_tag=$(jq -r '.version' ./package.json)
+          echo "version_tag=$version_tag" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies and Build application
+        run: |
+          npm install & npm run build
+
+      - name: Upload artifacts
+        id: artifact-upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.project_name }}-${{ env.ENV }}-staged-artifacts # Name for uploaded artifacts
+          path: ${{ inputs.content_paths }}
+
+  deploy:
+    environment: ${{ inputs.environment }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set ENV Vars
+        id: set-vars
+        run: |
+          branch_name=${{ github.ref_name }}
+          input_string=${{ inputs.env_vars }}
+          IFS=',' read -ra pairs <<< "$input_string"
+          for pair in "${pairs[@]}"; do
+            IFS=':' read -ra split_pair <<< "$pair"
+            echo "${split_pair[0]}=${split_pair[1]}" >> $GITHUB_ENV
+          done
+
+      - id: "auth"
+        name: GCP Authentication
+        uses: "google-github-actions/auth@v2"
+        with:
+          workload_identity_provider: "projects/423509969265/locations/global/workloadIdentityPools/gha-cldteam-pool-58a241b9/providers/gha-cldteam-provid-58a241b9"
+          service_account: "${{ inputs.service_account_name }}@${{ inputs.gcp_project_id }}.iam.gserviceaccount.com"
+          token_format: "access_token"
+
+      - name: Setup gcloud SDK
+        uses: "google-github-actions/setup-gcloud@v2"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.project_name }}-${{ env.ENV }}-staged-artifacts
+          run-id: ${{ needs.build.outputs.run_id }}
+          path: ${{ github.workspace }}/artifacts
+
+      - name: Extract major version from package.json
+        id: extract_version
+        run: |
+          major_version=$(jq -r '.version' package.json | cut -d. -f1)
+          echo "MAJOR_VERSION=${major_version}" >> $GITHUB_ENV
+
+      - id: "upload-files"
+        uses: "google-github-actions/upload-cloud-storage@v2"
+        with:
+          path: ${{ github.workspace }}/artifacts
+          destination: "${{ inputs.gcp_hosting_bucket }}/${{ env.DEPLOY_FOLDER }}/v${{ env.MAJOR_VERSION }}"
+          parent: false
+          process_gcloudignore: false
+
+      - name: Send deploy finish announcement to Slack
+        if: ${{ inputs.slack_channel }}
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "channel": "${{ inputs.slack_channel }}",
+              "repository": "${{ github.event.repository.name }}:${{ github.ref_name }}",
+              "payload": "Deployed version ${{ needs.build.outputs.version_tag }} in run ${{ github.run_number }} to GCP ${{ inputs.gcp_environment_name }} Environment",
+              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Send deploy failure announcement to Slack
+        if: ${{ inputs.slack_channel }}
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "channel": "${{ inputs.slack_channel }}",
+              "repository": "${{ github.event.repository.name }}:${{ github.ref_name }}",
+              "payload": "Failed to deploy version ${{ needs.build.outputs.version_tag }} in run ${{ github.run_number }} to GCP ${{ inputs.gcp_environment_name }} Environment",
+              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,387 @@
+name: PR Validation & Development Deployment
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [master]
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.1
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Get version
+        id: get-version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Package version: $VERSION"
+
+      - name: Verify version consistency
+        run: |
+          # Version is now managed via webpack from package.json
+          echo "✅ Version management: Single source of truth (package.json)"
+          echo "Package version: ${{ steps.get-version.outputs.version }}"
+          
+          # Verify documentation version references
+          if [ -d "docs" ]; then
+            DOC_VERSION_MISMATCH=$(find docs -type f -name "*.md" -exec grep -l "version: [0-9]\+\.[0-9]\+\.[0-9]\+" {} \; | xargs grep -L "version: ${{ steps.get-version.outputs.version }}" || echo "")
+            if [ -n "$DOC_VERSION_MISMATCH" ]; then
+              echo "⚠️ Documentation version mismatch detected in:"
+              echo "$DOC_VERSION_MISMATCH"
+              echo "Please run 'npm run prepare-release' locally to ensure version consistency"
+              exit 1
+            else
+              echo "✅ Documentation versions are consistent"
+            fi
+          fi
+
+      - name: Lint
+        id: lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build check
+        id: build
+        run: NODE_ENV=production npx webpack --mode=production --json > /dev/null
+        continue-on-error: true
+        
+      - name: Report Status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const lintStatus = "${{ steps.lint.outcome }}" === "success" ? "✅" : "❌";
+            const buildStatus = "${{ steps.build.outcome }}" === "success" ? "✅" : "❌";
+            
+            const body = "## Validation Results\n\n" +
+                        "| Check | Status |\n" +
+                        "| ----- | ------ |\n" +
+                        "| Lint | " + lintStatus + " |\n" +
+                        "| Build | " + buildStatus + " |\n" +
+                        "| Version | `${{ steps.get-version.outputs.version }}` |\n\n" +
+                        "[View detailed logs](" + process.env.GITHUB_SERVER_URL + "/" + 
+                        process.env.GITHUB_REPOSITORY + "/actions/runs/" + 
+                        process.env.GITHUB_RUN_ID + ")";
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+            
+            // Fail the workflow if any checks failed
+            const lintFailed = "${{ steps.lint.outcome }}" !== "success";
+            const buildFailed = "${{ steps.build.outcome }}" !== "success";
+            
+            if (lintFailed || buildFailed) {
+              core.setFailed("One or more validation checks failed");
+            }
+        
+  tests:
+    needs: validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: write
+    strategy:
+      matrix:
+        browser: [chromium, firefox]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.1
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ matrix.browser }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-${{ matrix.browser }}-
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run tests
+        id: run_tests
+        run: |
+          # Create the report directory in case tests fail before it's created
+          mkdir -p playwright-report
+          # Run the tests with increased timeout for CI
+          PLAYWRIGHT_TIMEOUT=120000 npx playwright test --project=${{ matrix.browser }} --reporter=html,list
+        continue-on-error: true
+          
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: playwright-report/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Report Test Results
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const testStatus = "${{ steps.run_tests.outcome }}" === "success" ? "✅" : "❌";
+            
+            const body = "## Browser Test Results: ${{ matrix.browser }}\n\n" +
+                         "| Test | Status |\n" +
+                         "| ---- | ------ |\n" +
+                         "| ${{ matrix.browser }} | " + testStatus + " |\n\n" +
+                         "[View test report](" + process.env.GITHUB_SERVER_URL + "/" + 
+                         process.env.GITHUB_REPOSITORY + "/actions/runs/" + 
+                         process.env.GITHUB_RUN_ID + ")";
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  build:
+    needs: [validation, tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+      artifact_name: ${{ steps.artifact.outputs.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.1
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Get version
+        id: get-version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Package version: $VERSION"
+          
+      - name: Build
+        run: npm run build
+        
+      - name: Set artifact name
+        id: artifact
+        run: |
+          echo "name=tiles-pr-${{ github.event.pull_request.number }}-${{ steps.get-version.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "Created artifact name: tiles-pr-${{ github.event.pull_request.number }}-${{ steps.get-version.outputs.version }}"
+          
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: dist/
+          retention-days: 7
+          
+  deploy-dev:
+    needs: [validation, tests, build]
+    if: success()
+    runs-on: ubuntu-latest
+    environment: development
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: ./dist
+          
+      - name: Set environment variables
+        run: |
+          echo "DEPLOY_FOLDER=qa" >> $GITHUB_ENV
+          echo "ENV=development" >> $GITHUB_ENV
+          echo "GCP_PROJECT_ID=dev-digital-banno" >> $GITHUB_ENV
+          echo "GCP_HOSTING_BUCKET=dev-digital-gzo-geezeo-tiles-zwwst63n" >> $GITHUB_ENV
+          echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+          echo "DEPLOY_VERSION=${{ needs.build.outputs.version }}" >> $GITHUB_ENV
+          
+      - name: GCP Authentication
+        uses: "google-github-actions/auth@v2"
+        with:
+          workload_identity_provider: "projects/423509969265/locations/global/workloadIdentityPools/gha-cldteam-pool-58a241b9/providers/gha-cldteam-provid-58a241b9"
+          service_account: "geezeo-tiles@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
+          token_format: "access_token"
+
+      - name: Setup gcloud SDK
+        uses: "google-github-actions/setup-gcloud@v2"
+      
+      - name: Check artifact structure
+        run: |
+          echo "Checking downloaded artifact structure:"
+          ls -la ./dist/
+          echo "---"
+          # The build creates dist/{DEPLOY_FOLDER}/v2/ structure
+          # Default DEPLOY_FOLDER is 'dev' when not specified
+          if [ -d "./dist/dev/v2" ]; then
+            echo "Found dev/v2 directory (default build output)"
+            ls -la ./dist/dev/v2/ | head -10
+          fi
+          if [ -d "./dist/qa/v2" ]; then
+            echo "Found qa/v2 directory"
+            ls -la ./dist/qa/v2/ | head -10
+          fi
+          if [ -d "./dist/docs" ]; then
+            echo "Found docs directory"
+            ls -la ./dist/docs/ | head -10
+          fi
+          
+      - name: Deploy to development
+        run: |
+          echo "Deploying to development environment"
+          # The build creates dist/{DEPLOY_FOLDER}/v2/ structure
+          # Default DEPLOY_FOLDER is 'dev' when not specified during build
+          if [ -d "./dist/dev/v2" ]; then
+            echo "Deploying from dist/dev/v2 (default build output)"
+            gsutil -m rsync -r -d ./dist/dev/v2/ gs://${{ env.GCP_HOSTING_BUCKET }}/${{ env.DEPLOY_FOLDER }}/v2/
+          elif [ -d "./dist/qa/v2" ]; then
+            echo "Deploying from dist/qa/v2"
+            gsutil -m rsync -r -d ./dist/qa/v2/ gs://${{ env.GCP_HOSTING_BUCKET }}/${{ env.DEPLOY_FOLDER }}/v2/
+          else
+            echo "ERROR: Could not find expected build output structure"
+            echo "Expected dist/dev/v2 or dist/qa/v2"
+            ls -la ./dist/
+            exit 1
+          fi
+          
+          # Deploy docs if they exist
+          if [ -d "./dist/docs" ]; then
+            echo "Deploying documentation"
+            gsutil -m rsync -r -d ./dist/docs/ gs://${{ env.GCP_HOSTING_BUCKET }}/${{ env.DEPLOY_FOLDER }}/v2/docs/
+          fi
+          
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment to development environment"
+          
+          # Initialize verification statuses
+          VERIFY_HTML="❌"
+          VERIFY_JS="❌"
+          VERIFY_DOCS="❌"
+          
+          # Simply verify that key files exist without checking version content
+          if gsutil ls "gs://${{ env.GCP_HOSTING_BUCKET }}/${{ env.DEPLOY_FOLDER }}/v2/index.html"; then
+            echo "✅ index.html found in development environment"
+            VERIFY_HTML="✅"
+          else
+            echo "⚠️ index.html not found in development environment"
+          fi
+            
+          # Check for JavaScript files
+          if gsutil ls "gs://${{ env.GCP_HOSTING_BUCKET }}/${{ env.DEPLOY_FOLDER }}/v2/tiles.js"; then
+            echo "✅ tiles.js found in development environment"
+            VERIFY_JS="✅"
+          else
+            echo "⚠️ tiles.js not found in expected location"
+          fi
+            
+          # Check documentation existence
+          if gsutil ls "gs://${{ env.GCP_HOSTING_BUCKET }}/${{ env.DEPLOY_FOLDER }}/v2/docs/index.html"; then
+            echo "✅ Documentation index.html found in development environment"
+            VERIFY_DOCS="✅"
+          else
+            echo "⚠️ Documentation not found in development environment"
+          fi
+            
+          # Set verification summary
+          echo "VERIFY_HTML=$VERIFY_HTML" >> $GITHUB_ENV
+          echo "VERIFY_JS=$VERIFY_JS" >> $GITHUB_ENV
+          echo "VERIFY_DOCS=$VERIFY_DOCS" >> $GITHUB_ENV
+          
+          # Determine final verification result
+          if [ "$VERIFY_HTML" == "✅" ] && [ "$VERIFY_JS" == "✅" ] && [ "$VERIFY_DOCS" == "✅" ]; then
+            VERIFY_RESULT="✅ All components deployed successfully"
+          else
+            VERIFY_RESULT="⚠️ Some components not found (see logs)"
+          fi
+          
+          echo "VERIFY_RESULT=$VERIFY_RESULT" >> $GITHUB_ENV
+            
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **Development Deployment Complete!**
+              
+              Version: \`${{ needs.build.outputs.version }}\`
+              Environment: Development
+              PR: #${{ github.event.pull_request.number }}
+              
+              Development URL: https://geezeo.geezeo.banno-development.com/qa/v2/index.html
+              Docs URL: https://geezeo.geezeo.banno-development.com/qa/v2/docs/index.html
+              
+              ### Verification Results:
+              
+              | Component | Status | Notes |
+              | --------- | ------ | ----- |
+              | HTML/Index | ${{ env.VERIFY_HTML }} | Main index.html file |
+              | JS/Application | ${{ env.VERIFY_JS }} | Application code (tiles.js) |
+              | Documentation | ${{ env.VERIFY_DOCS }} | Documentation files |
+              
+              **Summary**: ${{ env.VERIFY_RESULT }}
+              
+              Your changes are now live in the development environment.`
+            })

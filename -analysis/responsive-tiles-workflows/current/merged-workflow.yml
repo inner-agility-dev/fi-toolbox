@@ -1,0 +1,94 @@
+name: Post-Merge Deployment
+
+# This workflow triggers when a PR is merged to master
+# It requires the following permissions:
+# - contents:read - to checkout the code
+# - id-token:write - for GCP authentication
+# - actions:write - to manage workflow runs and trigger other workflows
+# - pull-requests:write - to comment on PRs
+#
+# For cross-workflow triggering, it's recommended to set up a WORKFLOW_PAT secret
+# with workflow:write scope to avoid the "Resource not accessible by integration" error.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+
+permissions:
+  contents: read
+  id-token: write
+  actions: write
+  pull-requests: write
+
+jobs:
+  deploy-if-merged:
+    # Only run if the PR was merged (not just closed)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: master # Always use the latest master
+          fetch-depth: 0
+
+      - name: Get version
+        id: get-version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Package version: $VERSION"
+
+      - name: Trigger main deployment workflow
+        uses: actions/github-script@v7
+        with:
+          # Use PAT if available, otherwise fall back to GITHUB_TOKEN
+          github-token: ${{ secrets.WORKFLOW_PAT || secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'main-deployment.yml',
+                ref: 'master'
+              });
+              console.log('Successfully triggered main-deployment.yml workflow');
+            } catch (error) {
+              console.error('Failed to trigger workflow dispatch:', error.message);
+              
+              if (error.status === 403) {
+                console.log('Attempting alternative approach with workflow_dispatch event');
+                // If this fails, we'll need to set up a PAT with appropriate permissions
+                core.setFailed('Unable to trigger workflow. Please set up a WORKFLOW_PAT secret with "workflow" scope.');
+              } else {
+                core.setFailed(`Error: ${error.message}`);
+              }
+            }
+            
+      - name: Notify PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **PR Merged - Deployment Triggered!**
+              
+              Your PR has been merged to master and the main deployment workflow has been triggered.
+              
+              Version: \`${{ steps.get-version.outputs.version }}\`
+              
+              This will deploy to:
+              - Staging: https://stage-digital-gzo-geezeo-tiles-nyjcof9v.storage.googleapis.com/staging/v2/index.html
+              - Production: https://prod-digital-gzo-geezeo-tiles-gvf7byup.storage.googleapis.com/production/v2/index.html
+              
+              Check the [Main Deployment Workflow](${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/workflows/main-deployment.yml) for status.`
+            });
