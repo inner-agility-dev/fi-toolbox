@@ -1,0 +1,25 @@
+{
+  "commands": [
+    {
+      "name": "sync-repos",
+      "description": "Sync between lenny-miller and lennylmiller repositories",
+      "path": "./sync-repos.js",
+      "examples": [
+        "/sync-repos",
+        "/sync-repos -r",
+        "/sync-repos --merge",
+        "/sync-repos --status"
+      ]
+    },
+    {
+      "name": "gh-auth",
+      "description": "Switch GitHub authentication between R&D and Production contexts",
+      "path": "./gh-auth.js",
+      "examples": [
+        "/gh-auth rnd",
+        "/gh-auth prod",
+        "/gh-auth status"
+      ]
+    }
+  ]
+}
