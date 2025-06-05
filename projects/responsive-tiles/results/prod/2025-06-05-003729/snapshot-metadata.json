@@ -1,0 +1,9 @@
+{
+  "snapshot_id": "2025-06-05-003729",
+  "created_at": "2025-06-05T00:37:29.379Z",
+  "collection": "prod",
+  "collection_description": "Production documentation set - minimal files required for public documentation",
+  "file_count": 18,
+  "total_size_mb": 0.27,
+  "config_file": "responsive-tiles-config-prod.json"
+}

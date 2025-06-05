@@ -1,0 +1,57 @@
+{
+  "orchestration": {
+    "session_id": "2025-06-05-parallel-cli-migration",
+    "orchestrator_ticket": "PVTI_lAHOAALNNc4A6pIXzgbKFa0",
+    "start_time": "2025-06-05T00:00:00Z",
+    "agents": 2,
+    "status": "INITIALIZED"
+  },
+  "agents": {
+    "agent_1": {
+      "id": "AGENT-1",
+      "ticket": "PVTI_lAHOAALNNc4A6pIXzgbKFeo",
+      "task": "Migrate sync-repos.js to TypeScript/Oclif",
+      "status": "NOT_STARTED",
+      "working_directory": "/Users/LenMiller/code/banno/fi-toolbox",
+      "allowed_paths": ["src/commands/sync/*", "src/lib/utils/*", "src/types/*"],
+      "restricted_paths": ["docs/*", "projects/*", "*.md"],
+      "files_created": [],
+      "files_modified": [],
+      "last_update": null,
+      "progress_notes": ""
+    },
+    "agent_2": {
+      "id": "AGENT-2", 
+      "ticket": "PVTI_lAHOAALNNc4A6pIXzgbKFiA",
+      "task": "Document fi-toolbox Architecture",
+      "status": "NOT_STARTED",
+      "working_directory": "/Users/LenMiller/code/banno/fi-toolbox",
+      "allowed_paths": ["docs/ARCHITECTURE.md", "docs/architecture/*", "docs/diagrams/*"],
+      "restricted_paths": ["src/*", "*.js", "*.ts", "projects/*"],
+      "files_created": [],
+      "files_modified": [],
+      "last_update": null,
+      "progress_notes": ""
+    }
+  },
+  "sync_points": [
+    {
+      "time": "T+30min",
+      "description": "First progress check",
+      "completed": false
+    },
+    {
+      "time": "T+60min", 
+      "description": "Mid-point evaluation",
+      "completed": false
+    },
+    {
+      "time": "T+90min",
+      "description": "Target completion",
+      "completed": false
+    }
+  ],
+  "conflicts": [],
+  "merge_strategy": "sequential",
+  "next_sync": "2025-06-05T00:30:00Z"
+}

@@ -1,0 +1,43 @@
+{
+  "source_project": "responsive-tiles",
+  "target_project": "fi-toolbox",
+  "collection": "prod",
+  "doc_extensions": [
+    ".md"
+  ],
+  "exclude_patterns": [
+    "node_modules",
+    ".git",
+    ".DS_Store",
+    "build",
+    "dist",
+    "coverage",
+    "logs",
+    "tmp",
+    ".vscode",
+    ".idea"
+  ],
+  "include_paths": [
+    "README.md",
+    "docs/ARCHITECTURE.md",
+    "docs/COMPONENTS.md",
+    "docs/DEVELOPMENT.md",
+    "docs/guides/API-INTEGRATION.md",
+    "docs/guides/STATE-MANAGEMENT.md",
+    "docs/guides/TESTING.md",
+    "docs/PERFORMANCE.md",
+    "docs/CONFIGURATION.md",
+    "docs/CONTAINER-LAYOUT.md",
+    "docs/DEVELOPER-TOOLS.md",
+    "docs/TROUBLESHOOTING.md",
+    "docs/CONTRIBUTING.md",
+    "docs/GITHUB-WORKFLOW.md",
+    "docs/workflows/GCP-DEPLOYMENT.md",
+    "docs/workflows/LOCAL-TESTING.md",
+    "docs/EMBED-IMAGES.md",
+    "docs/SEMANTIC-RELEASE.md"
+  ],
+  "exclude_paths": [],
+  "max_file_size_mb": 10,
+  "collection_description": "Production documentation set - minimal files required for public documentation"
+}

@@ -1,0 +1,67 @@
+@startuml project-lifecycle
+!theme plain
+title FI-Toolbox Project Lifecycle Management
+
+skinparam activityBackgroundColor #E6F3FF
+skinparam activityBorderColor #4169E1
+skinparam activityFontSize 12
+skinparam arrowColor #4169E1
+
+start
+
+:PRE_REGISTER;
+note right
+  * Initial project setup
+  * Requirements gathering
+  * Team formation
+end note
+
+:REGISTERING;
+note right
+  * GitHub Project creation
+  * SCRUM board setup
+  * Initial documentation
+end note
+
+:REGISTERED;
+note right
+  * Project tracking begins
+  * Sprint planning
+  * Resource allocation
+end note
+
+:RND (Research);
+note right
+  * 3-day sprints
+  * Daily check-ins
+  * POC development
+  * No retrospectives
+end note
+
+:PRD (Requirements);
+note right
+  * 1-week sprints
+  * 2x/week stand-ups
+  * Requirements documentation
+  * Weekly retrospectives
+end note
+
+:SDLC (Development);
+note right
+  * 2-week sprints
+  * Daily stand-ups
+  * Active development
+  * Sprint retrospectives
+end note
+
+:MAINTENANCE;
+note right
+  * Kanban flow
+  * As-needed updates
+  * Bug fixes
+  * Support requests
+end note
+
+stop
+
+@enduml

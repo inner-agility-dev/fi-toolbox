@@ -1,0 +1,67 @@
+@startuml system-architecture
+!theme plain
+title FI-Toolbox System Architecture
+
+skinparam componentStyle rectangle
+skinparam packageBorderColor #888888
+skinparam componentBackgroundColor #F0F0F0
+
+package "Developer Interface" {
+  [IDE / Terminal] as IDE
+  [Claude Code] as Claude
+}
+
+package "FI-Toolbox CLI" #E6F3FF {
+  package "Command Layer" {
+    [sync-repos] as sync
+    [gh-auth] as auth
+    [project] as project
+    [/verify] as verify
+  }
+  
+  package "Service Layer" {
+    [Git Service] as GitSvc
+    [GitHub Service] as GHSvc
+    [Project Manager] as ProjMgr
+    [Doc Manager] as DocMgr
+  }
+  
+  package "Integration Layer" {
+    [orchestr8r-mcp] as MCP
+    [Claude Commands] as ClaudeCmds
+  }
+  
+  database "PostgreSQL" as DB
+}
+
+package "External Systems" {
+  cloud "GitHub API\n(GraphQL)" as GHAPI
+  cloud "Git Repos" as GitRepos {
+    [inner-agility-dev] as RND
+    [lennylmiller] as PROD
+  }
+  [AI Models] as AI
+}
+
+' Connections
+IDE --> sync : fitb sync repos
+IDE --> auth : fitb gh auth
+IDE --> project : fitb project
+Claude --> ClaudeCmds : /sync-repos
+
+sync --> GitSvc
+auth --> GHSvc
+project --> ProjMgr
+verify --> DocMgr
+
+GitSvc --> GitRepos
+GHSvc --> GHAPI
+ProjMgr --> DB
+ProjMgr --> MCP
+
+MCP --> GHAPI
+MCP <--> AI : MCP Protocol
+
+DocMgr --> DB
+
+@enduml

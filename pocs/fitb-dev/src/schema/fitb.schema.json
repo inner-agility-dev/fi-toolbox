@@ -1,0 +1,18 @@
+
+{
+  "resources": [
+    {
+      "name": "task",
+      "table": "tasks",
+      "idField": "id",
+      "fields": {
+        "id": { "type": "integer" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string" },
+        "created_at": { "type": "timestamp" },
+        "updated_at": { "type": "timestamp" }
+      }
+    }
+  ]
+}

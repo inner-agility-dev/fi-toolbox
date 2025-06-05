@@ -1,0 +1,32 @@
+{
+  "source_project": "responsive-tiles",
+  "target_project": "fi-toolbox",
+  "doc_extensions": [
+    ".md",
+    ".txt",
+    ".rst",
+    ".adoc"
+  ],
+  "exclude_patterns": [
+    "node_modules",
+    ".git",
+    ".DS_Store",
+    "build",
+    "dist",
+    "coverage",
+    "logs",
+    "tmp",
+    ".vscode",
+    ".idea"
+  ],
+  "include_paths": [
+    "docs/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exclude_paths": [
+    "docs/build/",
+    "docs/coverage/"
+  ],
+  "max_file_size_mb": 10
+}

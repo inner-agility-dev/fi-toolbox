@@ -1,0 +1,76 @@
+@startuml git-sync-workflow
+!theme plain
+title Git Repository Synchronization Workflow
+
+skinparam sequenceArrowThickness 2
+skinparam sequenceParticipantBorderColor #4169E1
+skinparam sequenceLifeLineBorderColor #4169E1
+
+actor Developer
+participant "fitb CLI" as CLI
+participant "Git Service" as Git
+database "inner-agility-dev\n(lenny-miller)" as RND
+database "fi-toolbox\n(local)" as Local
+database "lennylmiller\n(production)" as PROD
+
+== Forward Sync: RND → PROD ==
+
+Developer -> CLI: fitb sync repos --forward
+activate CLI
+
+CLI -> Git: getCurrentBranch()
+Git --> CLI: current_branch
+
+CLI -> Git: checkout(main-rnd)
+Git -> Local: git checkout main-rnd
+Local --> Git: success
+
+CLI -> Git: pull(inner-agility-dev, main)
+Git -> RND: git pull
+RND --> Local: latest changes
+Local --> Git: success
+
+CLI -> Git: checkout(main-prod)
+Git -> Local: git checkout main-prod
+Local --> Git: success
+
+CLI -> Git: rebase(main-rnd)
+Git -> Local: git rebase main-rnd
+Local --> Git: success
+
+CLI -> Git: push(lennylmiller, main-prod:main)
+Git -> Local: prepare push
+Local -> PROD: git push
+PROD --> Git: success
+
+CLI -> Git: checkout(current_branch)
+Git -> Local: git checkout
+Local --> Git: success
+
+CLI --> Developer: ✅ Sync completed
+
+== Reverse Sync: PROD → RND ==
+
+Developer -> CLI: fitb sync repos --reverse
+activate CLI
+
+CLI -> Git: checkout(main-prod)
+Git -> Local: git checkout main-prod
+
+CLI -> Git: pull(lennylmiller, main)
+Git -> PROD: git pull
+PROD --> Local: latest changes
+
+CLI -> Git: checkout(main-rnd)
+Git -> Local: git checkout main-rnd
+
+CLI -> Git: rebase(main-prod)
+Git -> Local: git rebase main-prod
+
+CLI -> Git: push(inner-agility-dev, main-rnd:main)
+Git -> RND: git push
+RND --> Git: success
+
+CLI --> Developer: ✅ Sync completed
+
+@enduml

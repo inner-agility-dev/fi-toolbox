@@ -1,0 +1,84 @@
+@startuml mcp-integration
+!theme plain
+title FI-Toolbox and orchestr8r-mcp Integration
+
+skinparam componentStyle rectangle
+skinparam interfaceBackgroundColor #FFE4B5
+
+package "FI-Toolbox" #E6F3FF {
+  [Project Manager] as PM
+  [Task Commands] as Tasks
+  [Sprint Manager] as Sprint
+  
+  interface "MCP Client" as MCPClient
+}
+
+package "orchestr8r-mcp" #F0E68C {
+  interface "MCP Server" as MCPServer
+  
+  component "29 GitHub Tools" as Tools {
+    [get-project]
+    [list-projects]
+    [create-project]
+    [update-project-item]
+    [create-issue]
+    [add-item-to-project]
+    [...more tools]
+  }
+  
+  component "Operations Layer" {
+    [Projects Ops] as ProjOps
+    [Issues Ops] as IssueOps
+    [Fields Ops] as FieldOps
+  }
+  
+  component "Automation Scripts" {
+    [morning-standup.ts]
+    [start-my-day.ts]
+    [complete-task.ts]
+  }
+}
+
+cloud "GitHub API v4\n(GraphQL)" as GitHub
+
+package "AI Clients" {
+  [Claude Desktop] as Claude
+  [Other AI Tools] as OtherAI
+}
+
+' Connections
+PM --> MCPClient
+Tasks --> MCPClient
+Sprint --> MCPClient
+
+MCPClient ..> MCPServer : MCP Protocol
+
+MCPServer --> Tools
+Tools --> ProjOps
+Tools --> IssueOps
+Tools --> FieldOps
+
+ProjOps --> GitHub
+IssueOps --> GitHub
+FieldOps --> GitHub
+
+Claude --> MCPServer : Tool Calls
+OtherAI --> MCPServer : Tool Calls
+
+note bottom of Tools
+  Project Management:
+  - get/list/create/update/delete projects
+  - manage project fields and items
+  
+  Issue Management:
+  - create/update issues
+  - add items to projects
+  - manage draft issues
+  
+  Automation:
+  - Daily workflow scripts
+  - Sprint ceremonies
+  - Task tracking
+end note
+
+@enduml
