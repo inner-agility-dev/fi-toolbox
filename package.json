@@ -71,6 +71,9 @@
     "topics": {
       "sync": {
         "description": "Synchronize repositories between inner-agility-dev and lennylmiller"
+      },
+      "doc": {
+        "description": "Documentation management and snapshots"
       }
     }
   },
